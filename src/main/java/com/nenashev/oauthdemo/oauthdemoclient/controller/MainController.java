@@ -107,6 +107,7 @@ public class MainController {
             .collect(toSet());
 
         if (!cScope.containsAll(reqScope)) {
+            logger.error("Invalid scope, expected of {}, got {}", cScope, reqScope);
             final UriComponentsBuilder redirectBuilder = UriComponentsBuilder.fromUriString(reqRedirectUri);
             redirectBuilder.queryParam("error", "invalid_scope");
             return "redirect:" + redirectBuilder.encode().build().toUriString();
