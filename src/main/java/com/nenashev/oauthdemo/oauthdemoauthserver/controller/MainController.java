@@ -79,6 +79,8 @@ public class MainController {
     @GetMapping(path = "/authorize")
     public String authorize(final @RequestParam Map<String, String> params,
                             final ModelMap modelMap) {
+        logger.info("Received GET /authorize with parameters: {}", params);
+
         final String reqClientId = params.get("client_id");
         final OauthClient client = clientsById.get(reqClientId);
 
@@ -128,6 +130,8 @@ public class MainController {
     @PostMapping(path = "/approve")
     public String approve(final @RequestParam Map<String, String> params,
                           final ModelMap modelMap) {
+        logger.info("Received POST /approve, parameters: {}", params);
+
         final Map<String, String> query = Optional.ofNullable(params.get("reqid"))
             .map(requestsById::remove)
             .orElse(null);
@@ -191,6 +195,8 @@ public class MainController {
     @ResponseBody
     public Object token(final @RequestHeader("Authorization") Optional<String> auth,
                         final @RequestParam Map<String, String> params) {
+        logger.info("Received POST /token, authorization: {}, parameters: {}", auth, params);
+
         final String clientId;
         final String clientSecret;
         if (auth.isPresent()) {
