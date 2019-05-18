@@ -1,6 +1,8 @@
 package com.nenashev.oauthdemo.oauthdemoclient.controller;
 
 import com.nenashev.oauthdemo.oauthdemoclient.config.OauthConfig;
+import com.nenashev.oauthdemo.oauthdemoclient.db.AccessTokenRepository;
+import com.nenashev.oauthdemo.oauthdemoclient.model.AccessTokenInfo;
 import com.nenashev.oauthdemo.oauthdemoclient.model.OauthClient;
 
 import java.nio.charset.StandardCharsets;
@@ -48,6 +50,7 @@ public class MainController {
 
     private final OauthConfig oauthConfig;
     private final SecureRandom secureRandom;
+    private final AccessTokenRepository accessTokenRepository;
 
     private final Map<String, OauthClient> clientsById;
 
@@ -56,9 +59,11 @@ public class MainController {
     private final Map<String, Map<String, Object>> codes = new ConcurrentHashMap<>();
 
     public MainController(final OauthConfig oauthConfig,
-                          final SecureRandom secureRandom) {
+                          final SecureRandom secureRandom,
+                          final AccessTokenRepository accessTokenRepository) {
         this.oauthConfig = oauthConfig;
         this.secureRandom = secureRandom;
+        this.accessTokenRepository = accessTokenRepository;
         this.clientsById = oauthConfig.getClients().stream()
             .collect(toMap(OauthClient::getClientId, Function.identity()));
 
@@ -235,7 +240,9 @@ public class MainController {
                         .flatMap(s -> ((Set<String>) s).stream())
                         .collect(Collectors.joining(" "));
 
-                    //TODO: nosql.insert({ access_token: access_token, client_id: clientId, scope: cscope });
+                    accessTokenRepository.save(
+                        new AccessTokenInfo(accessToken, clientId, StringUtils.hasText(cscope) ? cscope : null)
+                    );
 
                     logger.info("Issuing access token {} with scope {}", accessToken, cscope);
 

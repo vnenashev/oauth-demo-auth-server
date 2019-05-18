@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: oauth-demo-db
+  name: oauth-demo-db
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: oauth-demo-db
+  template:
+    metadata:
+      labels:
+        app: oauth-demo-db
+    spec:
+      containers:
+        - name: oauth-demo-db
+          image: mongo:4
+          ports:
+            - containerPort: 27017
+              protocol: TCP
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+      volumes:
+        - name: mongodb-data
+          persistentVolumeClaim:
+            claimName: mongodb-claim
