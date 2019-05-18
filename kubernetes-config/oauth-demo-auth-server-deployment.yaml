@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: oauth-demo-auth-server
-          image: vnenashev/oauth-demo-auth-server:0.0.2
+          image: vnenashev/oauth-demo-auth-server:0.0.3
           ports:
             - containerPort: 8081
               protocol: TCP

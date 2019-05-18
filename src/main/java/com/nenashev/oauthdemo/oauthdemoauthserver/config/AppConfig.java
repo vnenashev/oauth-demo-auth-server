@@ -1,4 +1,4 @@
-package com.nenashev.oauthdemo.oauthdemoclient.config;
+package com.nenashev.oauthdemo.oauthdemoauthserver.config;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;

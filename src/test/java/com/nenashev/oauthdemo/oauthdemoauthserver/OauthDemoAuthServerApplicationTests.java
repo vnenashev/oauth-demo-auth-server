@@ -1,4 +1,4 @@
-package com.nenashev.oauthdemo.oauthdemoclient;
+package com.nenashev.oauthdemo.oauthdemoauthserver;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;

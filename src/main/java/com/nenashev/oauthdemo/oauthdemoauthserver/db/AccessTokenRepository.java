@@ -1,6 +1,6 @@
-package com.nenashev.oauthdemo.oauthdemoclient.db;
+package com.nenashev.oauthdemo.oauthdemoauthserver.db;
 
-import com.nenashev.oauthdemo.oauthdemoclient.model.AccessTokenInfo;
+import com.nenashev.oauthdemo.oauthdemoauthserver.model.AccessTokenInfo;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
 

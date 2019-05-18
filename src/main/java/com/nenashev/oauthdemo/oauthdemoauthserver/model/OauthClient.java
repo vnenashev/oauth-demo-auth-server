@@ -1,4 +1,4 @@
-package com.nenashev.oauthdemo.oauthdemoclient.model;
+package com.nenashev.oauthdemo.oauthdemoauthserver.model;
 
 import java.util.ArrayList;
 import java.util.List;

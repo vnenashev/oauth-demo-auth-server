@@ -1,6 +1,6 @@
-package com.nenashev.oauthdemo.oauthdemoclient.config;
+package com.nenashev.oauthdemo.oauthdemoauthserver.config;
 
-import com.nenashev.oauthdemo.oauthdemoclient.model.OauthClient;
+import com.nenashev.oauthdemo.oauthdemoauthserver.model.OauthClient;
 
 import java.util.ArrayList;
 import java.util.List;

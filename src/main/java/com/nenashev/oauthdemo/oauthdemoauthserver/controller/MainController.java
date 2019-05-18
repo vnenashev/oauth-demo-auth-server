@@ -1,9 +1,9 @@
-package com.nenashev.oauthdemo.oauthdemoclient.controller;
+package com.nenashev.oauthdemo.oauthdemoauthserver.controller;
 
-import com.nenashev.oauthdemo.oauthdemoclient.config.OauthConfig;
-import com.nenashev.oauthdemo.oauthdemoclient.db.AccessTokenRepository;
-import com.nenashev.oauthdemo.oauthdemoclient.model.AccessTokenInfo;
-import com.nenashev.oauthdemo.oauthdemoclient.model.OauthClient;
+import com.nenashev.oauthdemo.oauthdemoauthserver.config.OauthConfig;
+import com.nenashev.oauthdemo.oauthdemoauthserver.db.AccessTokenRepository;
+import com.nenashev.oauthdemo.oauthdemoauthserver.model.AccessTokenInfo;
+import com.nenashev.oauthdemo.oauthdemoauthserver.model.OauthClient;
 
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
