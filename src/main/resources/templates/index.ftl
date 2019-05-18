@@ -44,7 +44,9 @@
                 <li><b>client_id:</b> <code>${client.clientId}</code></li>
                 <li><b>client_secret:</b> <code>${client.clientSecret}</code></li>
                 <li><b>scope:</b> <code>${client.scope}</code></li>
-                <li><b>redirect_uri:</b> <code>${client.redirectUris}</code></li>
+                <#list client.redirectUris as redirectUri>
+                    <li><b>redirect_uri:</b> <code>${redirectUri}</code></li>
+                </#list>
             </ul>
         </#list>
         <h2>Server information:</h2>
