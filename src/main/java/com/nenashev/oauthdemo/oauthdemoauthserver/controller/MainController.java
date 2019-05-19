@@ -141,6 +141,8 @@ public class MainController {
             return "error";
         }
 
+        logger.info("Authorization request was: {}", query);
+
         if (params.containsKey("approve")) {
             if (Objects.equals("code", query.get("response_type"))) {
                 final byte[] bcode = new byte[8];
