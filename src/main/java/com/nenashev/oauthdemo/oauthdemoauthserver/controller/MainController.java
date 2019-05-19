@@ -68,6 +68,10 @@ public class MainController {
             .collect(toMap(OauthClient::getClientId, Function.identity()));
 
         logger.info("Initialized main controller with OAuth config: {}", oauthConfig);
+
+        this.accessTokenRepository.deleteAll();
+
+        logger.info("Access token database cleared");
     }
 
     @GetMapping(path = "/")
