@@ -243,28 +243,36 @@ public class MainController {
                     .map(q -> ((Map) q).get("client_id"))
                     .orElse(null);
                 if (Objects.equals(clientId, expectedClientId)) {
+                    final String expectedRedirectUri = (String) code.get("redirect_uri");
+                    final String actualRedirectUri = params.get("redirect_uri");
+                    if (Objects.equals(expectedRedirectUri, actualRedirectUri)) {
+                        final byte[] at = new byte[32];
+                        secureRandom.nextBytes(at);
+                        final String accessToken = new String(encoder.encode(at), StandardCharsets.UTF_8);
+                        @SuppressWarnings("unchecked")
+                        final String cscope = Stream.of(code.get("scope"))
+                            .filter(Objects::nonNull)
+                            .flatMap(s -> ((Set<String>) s).stream())
+                            .collect(Collectors.joining(" "));
 
-                    final byte[] at = new byte[32];
-                    secureRandom.nextBytes(at);
-                    final String accessToken = new String(encoder.encode(at), StandardCharsets.UTF_8);
-                    @SuppressWarnings("unchecked")
-                    final String cscope = Stream.of(code.get("scope"))
-                        .filter(Objects::nonNull)
-                        .flatMap(s -> ((Set<String>) s).stream())
-                        .collect(Collectors.joining(" "));
+                        accessTokenRepository.save(
+                            new AccessTokenInfo(accessToken, clientId, StringUtils.hasText(cscope) ? cscope : null)
+                        );
 
-                    accessTokenRepository.save(
-                        new AccessTokenInfo(accessToken, clientId, StringUtils.hasText(cscope) ? cscope : null)
-                    );
+                        logger.info("Issuing access token {} with scope {}", accessToken, cscope);
 
-                    logger.info("Issuing access token {} with scope {}", accessToken, cscope);
+                        final Map<String, String> tokenResponse = new HashMap<>();
+                        tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
+                        tokenResponse.put("access_token", accessToken);
+                        tokenResponse.put("token_type", "Bearer");
 
-                    final Map<String, String> tokenResponse = new HashMap<>();
-                    tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
-                    tokenResponse.put("access_token", accessToken);
-                    tokenResponse.put("token_type", "Bearer");
-
-                    return ResponseEntity.ok(tokenResponse);
+                        return ResponseEntity.ok(tokenResponse);
+                    } else {
+                        logger.error("Redirect URI mismatch, expected {} got {}",
+                            expectedRedirectUri, actualRedirectUri);
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(Collections.singletonMap("error", "invalid_grant"));
+                    }
                 } else {
                     logger.error("Client mismatch, expected {} got {}", expectedClientId, clientId);
                     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
