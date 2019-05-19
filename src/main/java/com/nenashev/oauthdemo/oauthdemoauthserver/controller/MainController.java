@@ -243,7 +243,7 @@ public class MainController {
                 final Map<String, String> authRequest =
                     (Map<String, String>) code.get("authorizationEndpointRequest");
                 final Object expectedClientId = Optional.ofNullable(authRequest)
-                    .map(q -> ((Map) q).get("client_id"))
+                    .map(q -> q.get("client_id"))
                     .orElse(null);
                 if (Objects.equals(clientId, expectedClientId)) {
                     final String expectedRedirectUri = Optional.ofNullable(authRequest)
