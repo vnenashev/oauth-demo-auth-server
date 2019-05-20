@@ -7,6 +7,7 @@ import com.nenashev.oauthdemo.oauthdemoauthserver.model.OauthClient;
 
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
@@ -261,7 +262,11 @@ public class MainController {
                             .collect(Collectors.joining(" "));
 
                         accessTokenRepository.save(
-                            new AccessTokenInfo(accessToken, clientId, StringUtils.hasText(cscope) ? cscope : null)
+                            new AccessTokenInfo(
+                                accessToken,
+                                clientId,
+                                StringUtils.hasText(cscope) ? cscope : null,
+                                Instant.now())
                         );
 
                         logger.info("Issuing access token {} with scope {}", accessToken, cscope);

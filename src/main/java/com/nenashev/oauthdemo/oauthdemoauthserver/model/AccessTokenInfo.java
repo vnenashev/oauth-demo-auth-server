@@ -1,5 +1,6 @@
 package com.nenashev.oauthdemo.oauthdemoauthserver.model;
 
+import java.time.Instant;
 import java.util.Objects;
 
 import org.springframework.data.annotation.Id;
@@ -12,14 +13,19 @@ public class AccessTokenInfo {
     private String accessToken;
     private String clientId;
     private String scope;
+    private Instant issueDate;
 
     public AccessTokenInfo() {
     }
 
-    public AccessTokenInfo(final String accessToken, final String clientId, final String scope) {
+    public AccessTokenInfo(final String accessToken,
+                           final String clientId,
+                           final String scope,
+                           final Instant issueDate) {
         this.accessToken = accessToken;
         this.clientId = clientId;
         this.scope = scope;
+        this.issueDate = issueDate;
     }
 
     public String getId() {
@@ -54,6 +60,14 @@ public class AccessTokenInfo {
         this.scope = scope;
     }
 
+    public Instant getIssueDate() {
+        return issueDate;
+    }
+
+    public void setIssueDate(final Instant issueDate) {
+        this.issueDate = issueDate;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -62,7 +76,8 @@ public class AccessTokenInfo {
         return Objects.equals(id, that.id) &&
             Objects.equals(accessToken, that.accessToken) &&
             Objects.equals(clientId, that.clientId) &&
-            Objects.equals(scope, that.scope);
+            Objects.equals(scope, that.scope) &&
+            Objects.equals(issueDate, that.issueDate);
     }
 
     @Override
@@ -77,6 +92,7 @@ public class AccessTokenInfo {
             ", accessToken='" + accessToken + '\'' +
             ", clientId='" + clientId + '\'' +
             ", scope='" + scope + '\'' +
+            ", issueDate=" + issueDate +
             '}';
     }
 }
