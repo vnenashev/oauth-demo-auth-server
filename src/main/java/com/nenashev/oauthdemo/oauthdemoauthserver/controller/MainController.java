@@ -7,6 +7,7 @@ import com.nenashev.oauthdemo.oauthdemoauthserver.model.OauthClient;
 
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
@@ -23,6 +24,7 @@ import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -59,12 +61,16 @@ public class MainController {
 
     private final Map<String, Map<String, Object>> codes = new ConcurrentHashMap<>();
 
+    private final Duration tokenMaxAge;
+
     public MainController(final OauthConfig oauthConfig,
                           final SecureRandom secureRandom,
-                          final AccessTokenRepository accessTokenRepository) {
+                          final AccessTokenRepository accessTokenRepository,
+                          final @Value("${scheduling.access-token.max-age}") Duration tokenMaxAge) {
         this.oauthConfig = oauthConfig;
         this.secureRandom = secureRandom;
         this.accessTokenRepository = accessTokenRepository;
+        this.tokenMaxAge = tokenMaxAge;
         this.clientsById = oauthConfig.getClients().stream()
             .collect(toMap(OauthClient::getClientId, Function.identity()));
 
@@ -274,6 +280,7 @@ public class MainController {
                         final Map<String, String> tokenResponse = new HashMap<>();
                         tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
                         tokenResponse.put("access_token", accessToken);
+                        tokenResponse.put("expires_in", String.valueOf(tokenMaxAge.getSeconds()));
                         tokenResponse.put("token_type", "Bearer");
 
                         return ResponseEntity.ok(tokenResponse);

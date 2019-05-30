@@ -33,8 +33,12 @@ public class AccessTokenExpireScheduler {
         logger.info("Checking for expired access tokens...");
         final Instant maxIssueDate = Instant.now().minus(maxTokenAge);
         final List<AccessTokenInfo> tokensToDelete = accessTokenRepository.findByIssueDateBefore(maxIssueDate);
-        logger.info("Found tokens: {}", tokensToDelete);
-        accessTokenRepository.deleteAll(tokensToDelete);
-        logger.info("Deleted {} expired tokens", tokensToDelete.size());
+        if (!tokensToDelete.isEmpty()) {
+            logger.info("Found tokens: {}", tokensToDelete);
+            accessTokenRepository.deleteAll(tokensToDelete);
+            logger.info("Deleted {} expired tokens", tokensToDelete.size());
+        } else {
+            logger.info("No expired tokens found");
+        }
     }
 }
