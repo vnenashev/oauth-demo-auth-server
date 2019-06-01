@@ -336,10 +336,10 @@ public class MainController {
 
         logger.info("Issuing access token {} with scope {}", accessToken, cscope);
 
-        final Map<String, String> tokenResponse = new HashMap<>();
+        final Map<String, Object> tokenResponse = new HashMap<>();
         tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
         tokenResponse.put("access_token", accessToken);
-        tokenResponse.put("expires_in", String.valueOf(tokenMaxAge.getSeconds()));
+        tokenResponse.put("expires_in", tokenMaxAge.getSeconds());
         tokenResponse.put("token_type", "Bearer");
         tokenResponse.put("refresh_token", refreshToken);
 
