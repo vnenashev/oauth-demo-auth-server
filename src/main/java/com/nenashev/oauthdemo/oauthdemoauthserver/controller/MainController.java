@@ -295,11 +295,13 @@ public class MainController {
                     refreshTokenRepository.delete(refreshTokenInfo);
                     return ResponseEntity.badRequest().build();
                 }
+                logger.info("Found matching refresh token: {}", refreshTokenInfo.getRefreshToken());
 
                 final String accessToken = generateRandomString(32);
                 final String refreshToken = generateRandomString(64);
 
                 final String cscope = refreshTokenInfo.getScope();
+                refreshTokenRepository.delete(refreshTokenInfo);
 
                 return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope);
             } else {
