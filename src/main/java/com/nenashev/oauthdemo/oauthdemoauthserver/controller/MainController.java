@@ -2,8 +2,10 @@ package com.nenashev.oauthdemo.oauthdemoauthserver.controller;
 
 import com.nenashev.oauthdemo.oauthdemoauthserver.config.OauthConfig;
 import com.nenashev.oauthdemo.oauthdemoauthserver.db.AccessTokenRepository;
+import com.nenashev.oauthdemo.oauthdemoauthserver.db.RefreshTokenRepository;
 import com.nenashev.oauthdemo.oauthdemoauthserver.model.AccessTokenInfo;
 import com.nenashev.oauthdemo.oauthdemoauthserver.model.OauthClient;
+import com.nenashev.oauthdemo.oauthdemoauthserver.model.RefreshTokenInfo;
 
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -54,6 +56,7 @@ public class MainController {
     private final OauthConfig oauthConfig;
     private final SecureRandom secureRandom;
     private final AccessTokenRepository accessTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     private final Map<String, OauthClient> clientsById;
 
@@ -66,10 +69,12 @@ public class MainController {
     public MainController(final OauthConfig oauthConfig,
                           final SecureRandom secureRandom,
                           final AccessTokenRepository accessTokenRepository,
+                          final RefreshTokenRepository refreshTokenRepository,
                           final @Value("${scheduling.access-token.max-age}") Duration tokenMaxAge) {
         this.oauthConfig = oauthConfig;
         this.secureRandom = secureRandom;
         this.accessTokenRepository = accessTokenRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.tokenMaxAge = tokenMaxAge;
         this.clientsById = oauthConfig.getClients().stream()
             .collect(toMap(OauthClient::getClientId, Function.identity()));
@@ -126,9 +131,7 @@ public class MainController {
             return "redirect:" + redirectBuilder.encode().build().toUriString();
         }
 
-        final byte[] requestIdBytes = new byte[32];
-        secureRandom.nextBytes(requestIdBytes);
-        final String requestId = new String(encoder.encode(requestIdBytes), StandardCharsets.UTF_8);
+        final String requestId = generateRandomString(32);
         requestsById.put(requestId, Collections.unmodifiableMap(new HashMap<>(params)));
 
         modelMap.addAttribute("client", client);
@@ -156,9 +159,7 @@ public class MainController {
 
         if (params.containsKey("approve")) {
             if (Objects.equals("code", query.get("response_type"))) {
-                final byte[] bcode = new byte[8];
-                secureRandom.nextBytes(bcode);
-                final String code = new String(encoder.encode(bcode), StandardCharsets.UTF_8);
+                final String code = generateRandomString(8);
                 final Set<String> scope = params.keySet().stream()
                     .filter(s -> s.startsWith("scope_"))
                     .map(s -> s.substring("scope_".length()))
@@ -258,32 +259,16 @@ public class MainController {
                         .orElse(null);
                     final String actualRedirectUri = params.get("redirect_uri");
                     if (Objects.equals(expectedRedirectUri, actualRedirectUri)) {
-                        final byte[] at = new byte[32];
-                        secureRandom.nextBytes(at);
-                        final String accessToken = new String(encoder.encode(at), StandardCharsets.UTF_8);
+                        final String accessToken = generateRandomString(32);
+                        final String refreshToken = generateRandomString(64);
+
                         @SuppressWarnings("unchecked")
                         final String cscope = Stream.of(code.get("scope"))
                             .filter(Objects::nonNull)
                             .flatMap(s -> ((Set<String>) s).stream())
                             .collect(Collectors.joining(" "));
 
-                        accessTokenRepository.save(
-                            new AccessTokenInfo(
-                                accessToken,
-                                clientId,
-                                StringUtils.hasText(cscope) ? cscope : null,
-                                Instant.now())
-                        );
-
-                        logger.info("Issuing access token {} with scope {}", accessToken, cscope);
-
-                        final Map<String, String> tokenResponse = new HashMap<>();
-                        tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
-                        tokenResponse.put("access_token", accessToken);
-                        tokenResponse.put("expires_in", String.valueOf(tokenMaxAge.getSeconds()));
-                        tokenResponse.put("token_type", "Bearer");
-
-                        return ResponseEntity.ok(tokenResponse);
+                        return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope);
                     } else {
                         logger.error("Redirect URI mismatch, expected {} got {}",
                             expectedRedirectUri, actualRedirectUri);
@@ -300,10 +285,70 @@ public class MainController {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Collections.singletonMap("error", "invalid_grant"));
             }
+        } else if (Objects.equals("refresh_token", params.get("grant_type"))) {
+            final RefreshTokenInfo refreshTokenInfo =
+                refreshTokenRepository.findByRefreshToken(params.get("refresh_token"));
+            if (refreshTokenInfo != null) {
+                if (!Objects.equals(clientId, refreshTokenInfo.getClientId())) {
+                    logger.error("Invalid client using a refresh token, expected {} got {}",
+                        clientId, refreshTokenInfo.getClientId());
+                    refreshTokenRepository.delete(refreshTokenInfo);
+                    return ResponseEntity.badRequest().build();
+                }
+
+                final String accessToken = generateRandomString(32);
+                final String refreshToken = generateRandomString(64);
+
+                final String cscope = refreshTokenInfo.getScope();
+
+                return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope);
+            } else {
+                logger.error("No matching token was found");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
         } else {
             logger.error("Unknown grant type {}", params.get("grant_type"));
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Collections.singletonMap("error", "invalid_grant_type"));
         }
+    }
+
+    private Object generateTokensAndResponse(final String clientId,
+                                             final String accessToken,
+                                             final String refreshToken,
+                                             final String cscope) {
+        accessTokenRepository.save(
+            new AccessTokenInfo(
+                accessToken,
+                clientId,
+                StringUtils.hasText(cscope) ? cscope : null,
+                Instant.now())
+        );
+
+        refreshTokenRepository.save(
+            new RefreshTokenInfo(
+                refreshToken,
+                clientId,
+                StringUtils.hasText(cscope) ? cscope : null,
+                Instant.now()
+            )
+        );
+
+        logger.info("Issuing access token {} with scope {}", accessToken, cscope);
+
+        final Map<String, String> tokenResponse = new HashMap<>();
+        tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
+        tokenResponse.put("access_token", accessToken);
+        tokenResponse.put("expires_in", String.valueOf(tokenMaxAge.getSeconds()));
+        tokenResponse.put("token_type", "Bearer");
+        tokenResponse.put("refresh_token", refreshToken);
+
+        return ResponseEntity.ok(tokenResponse);
+    }
+
+    private String generateRandomString(final int bytesLength) {
+        final byte[] bytes = new byte[bytesLength];
+        secureRandom.nextBytes(bytes);
+        return new String(encoder.encode(bytes), StandardCharsets.UTF_8);
     }
 }

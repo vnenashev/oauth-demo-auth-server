@@ -21,3 +21,10 @@ spec:
           ports:
             - containerPort: 8081
               protocol: TCP
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - "sleep 5"
