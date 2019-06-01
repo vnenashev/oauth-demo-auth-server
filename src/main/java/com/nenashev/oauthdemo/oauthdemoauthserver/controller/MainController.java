@@ -317,12 +317,14 @@ public class MainController {
                                              final String accessToken,
                                              final String refreshToken,
                                              final String cscope) {
+        final Instant now = Instant.now();
         accessTokenRepository.save(
             new AccessTokenInfo(
                 accessToken,
                 clientId,
                 StringUtils.hasText(cscope) ? cscope : null,
-                Instant.now())
+                now,
+                now.plus(tokenMaxAge))
         );
 
         refreshTokenRepository.save(

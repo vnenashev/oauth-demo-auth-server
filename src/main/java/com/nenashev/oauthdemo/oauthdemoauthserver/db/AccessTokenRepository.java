@@ -11,5 +11,5 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 @Profile("!test")
 public interface AccessTokenRepository extends MongoRepository<AccessTokenInfo, String> {
 
-    List<AccessTokenInfo> findByIssueDateBefore(Instant minDate);
+    List<AccessTokenInfo> findByExpireDateBefore(Instant minDate);
 }
