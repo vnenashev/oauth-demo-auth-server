@@ -1,6 +1,7 @@
 package com.nenashev.oauthdemo.oauthdemoauthserver;
 
 import com.nenashev.oauthdemo.oauthdemoauthserver.db.AccessTokenRepository;
+import com.nenashev.oauthdemo.oauthdemoauthserver.db.RefreshTokenRepository;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,6 +17,9 @@ public class OauthDemoAuthServerApplicationTests {
 
     @MockBean
     private AccessTokenRepository accessTokenRepository;
+
+    @MockBean
+    private RefreshTokenRepository refreshTokenRepository;
 
     @Test
     public void contextLoads() {
