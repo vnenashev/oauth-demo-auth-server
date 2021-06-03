@@ -4,6 +4,7 @@ metadata:
   labels:
     app: oauth-demo-db
   name: oauth-demo-db
+  namespace: observability
 spec:
   replicas: 1
   revisionHistoryLimit: 1
@@ -24,9 +25,7 @@ spec:
                   - key: app
                     operator: In
                     values:
-                      - oauth-demo-auth-server
                       - oauth-demo-client
-                      - oauth-demo-protected-resource
       containers:
         - name: oauth-demo-db
           image: mongo:4

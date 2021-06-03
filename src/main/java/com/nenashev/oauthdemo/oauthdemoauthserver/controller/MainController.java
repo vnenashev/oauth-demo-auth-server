@@ -24,6 +24,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import javax.servlet.http.HttpServletRequest;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +43,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import io.jaegertracing.Configuration;
+import io.opentracing.Span;
+import io.opentracing.SpanContext;
+import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.propagation.TextMap;
+import io.opentracing.propagation.TextMapAdapter;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
 
@@ -66,18 +75,21 @@ public class MainController {
 
     private final Duration tokenMaxAge;
 
+    private final Tracer tracer = Configuration.fromEnv().getTracer();
+
     public MainController(final OauthConfig oauthConfig,
                           final SecureRandom secureRandom,
                           final AccessTokenRepository accessTokenRepository,
                           final RefreshTokenRepository refreshTokenRepository,
-                          final @Value("${scheduling.access-token.max-age}") Duration tokenMaxAge) {
+                          @Value("${scheduling.access-token.max-age}") final Duration tokenMaxAge
+                         ) {
         this.oauthConfig = oauthConfig;
         this.secureRandom = secureRandom;
         this.accessTokenRepository = accessTokenRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.tokenMaxAge = tokenMaxAge;
         this.clientsById = oauthConfig.getClients().stream()
-            .collect(toMap(OauthClient::getClientId, Function.identity()));
+                                      .collect(toMap(OauthClient::getClientId, Function.identity()));
 
         logger.info("Initialized main controller with OAuth config: {}", oauthConfig);
 
@@ -93,16 +105,37 @@ public class MainController {
     }
 
     @GetMapping(path = "/authorize")
-    public String authorize(final @RequestParam Map<String, String> params,
-                            final ModelMap modelMap) {
+    public String authorize(@RequestParam final Map<String, String> params,
+                            final HttpServletRequest request,
+                            final ModelMap modelMap
+                           ) {
         logger.info("Received GET /authorize with parameters: {}", params);
-
+        final SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(params));
+        Tracer.SpanBuilder spanBuilder;
+        try {
+            if (parentSpan == null) {
+                spanBuilder = tracer.buildSpan("authorize-page");
+            } else {
+                spanBuilder = tracer.buildSpan("authorize-page").asChildOf(parentSpan);
+            }
+        } catch (final IllegalArgumentException e) {
+            spanBuilder = tracer.buildSpan("authorize-page");
+        }
         final String reqClientId = params.get("client_id");
+        final Span span = spanBuilder
+            .withTag("remote_addr", request.getRemoteAddr())
+            .withTag("client_id", reqClientId)
+            .start();
+        span.log("Received GET /authorize");
+        span.log(params);
+
         final OauthClient client = clientsById.get(reqClientId);
 
         if (client == null) {
             logger.error("Unknown client {}", reqClientId);
             modelMap.addAttribute("error", "Unknown client");
+            span.log("Unknown client: " + reqClientId);
+            span.finish();
             return "error";
         }
 
@@ -110,6 +143,8 @@ public class MainController {
         if (!client.getRedirectUris().contains(reqRedirectUri)) {
             logger.error("Mismatched redirect URI, expected {}, got {}", client.getRedirectUris(), reqRedirectUri);
             modelMap.addAttribute("error", "Invalid redirect URI");
+            span.log("Invalid redirect URI: " + reqRedirectUri);
+            span.finish();
             return "error";
         }
 
@@ -128,6 +163,8 @@ public class MainController {
             logger.error("Invalid scope, expected of {}, got {}", cScope, reqScope);
             final UriComponentsBuilder redirectBuilder = UriComponentsBuilder.fromUriString(reqRedirectUri);
             redirectBuilder.queryParam("error", "invalid_scope");
+            span.log("Invalid scope: " + reqScope);
+            span.finish();
             return "redirect:" + redirectBuilder.encode().build().toUriString();
         }
 
@@ -138,17 +175,25 @@ public class MainController {
         modelMap.addAttribute("reqid", requestId);
         modelMap.addAttribute("scope", reqScope);
 
+        final Map<String, String> traceParams = new HashMap<>();
+        final TextMap textMap = new TextMapAdapter(traceParams);
+        tracer.inject(span.context(), Format.Builtin.TEXT_MAP, textMap);
+        modelMap.addAttribute("traceParams", traceParams);
+
+        span.finish();
+
         return "approve";
     }
 
     @PostMapping(path = "/approve")
-    public String approve(final @RequestParam Map<String, String> params,
-                          final ModelMap modelMap) {
+    public String approve(@RequestParam final Map<String, String> params,
+                          final ModelMap modelMap
+                         ) {
         logger.info("Received POST /approve, parameters: {}", params);
 
         final Map<String, String> query = Optional.ofNullable(params.get("reqid"))
-            .map(requestsById::remove)
-            .orElse(null);
+                                                  .map(requestsById::remove)
+                                                  .orElse(null);
 
         if (query == null) {
             modelMap.addAttribute("error", "No matching authorization request");
@@ -207,8 +252,9 @@ public class MainController {
 
     @PostMapping(path = "/token", produces = MediaType.APPLICATION_JSON_UTF8_VALUE)
     @ResponseBody
-    public Object token(final @RequestHeader("Authorization") Optional<String> auth,
-                        final @RequestParam Map<String, String> params) {
+    public Object token(@RequestHeader("Authorization") final Optional<String> auth,
+                        @RequestParam final Map<String, String> params
+                       ) {
         logger.info("Received POST /token, authorization: {}, parameters: {}", auth, params);
 
         final String clientId;

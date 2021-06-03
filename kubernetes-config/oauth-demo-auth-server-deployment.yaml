@@ -4,6 +4,9 @@ metadata:
   labels:
     app: oauth-demo-auth-server
   name: oauth-demo-auth-server
+  namespace: observability
+  annotations:
+    "sidecar.jaegertracing.io/inject": "true"
 spec:
   replicas: 1
   revisionHistoryLimit: 1
@@ -27,10 +30,19 @@ spec:
                       - oauth-demo-db
       containers:
         - name: oauth-demo-auth-server
-          image: vnenashev/oauth-demo-auth-server:0.1.4
+          image: vnenashev/oauth-demo-auth-server:0.1.5
           ports:
             - containerPort: 8081
               protocol: TCP
+          env:
+            - name: JAEGER_SERVICE_NAME
+              value: oauth-demo-auth-server
+            - name: JAEGER_SAMPLER_TYPE
+              value: const
+            - name: JAEGER_SAMPLER_PARAM
+              value: "1"
+            - name: JAEGER_REPORTER_LOG_SPANS
+              value: "true"
           lifecycle:
             preStop:
               exec:

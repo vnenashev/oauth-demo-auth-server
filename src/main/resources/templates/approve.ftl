@@ -48,20 +48,26 @@
 		  <#if client.logo_uri?? >
 		  <p><b>logo:</b> <img src="${client.logo_uri}>" /></p>
 		  </#if>
-		  
-		   <form class="form" action="/approve" method="POST">
-			   <input type="hidden" name="reqid" value="${reqid}">
-			   <#if scope?has_content >
-			   <p>The client is requesting access to the following:</p>
-			   <ul>
-			   <#list scope as s>
-			   	  <li><input type="checkbox" name="scope_${s}" id="scope_${s}" checked="checked"> <label for="scope_${s}">${s}</label></li>
-			   </#list>
-		       </ul>
-			   </#if>
-			   <input type="submit" class="btn btn-success" name="approve" value="Approve">
-			   <input type="submit" class="btn btn-danger" name="deny" value="Deny">
-		   </form>
+
+          <form class="form" action="/approve" method="POST">
+              <input type="hidden" name="reqid" value="${reqid}">
+              <#if scope?has_content >
+                  <p>The client is requesting access to the following:</p>
+                  <ul>
+                      <#list scope as s>
+                          <li><input type="checkbox" name="scope_${s}" id="scope_${s}" checked="checked"> <label
+                                      for="scope_${s}">${s}</label></li>
+                      </#list>
+                  </ul>
+              </#if>
+
+              <#list traceParams.entrySet() as entry>
+                  <input type="hidden" name="${entry.key}" value="${entry.value}"/>
+              </#list>
+
+              <input type="submit" class="btn btn-success" name="approve" value="Approve">
+              <input type="submit" class="btn btn-danger" name="deny" value="Deny">
+          </form>
       </div>
 
     </div><!-- /.container -->
