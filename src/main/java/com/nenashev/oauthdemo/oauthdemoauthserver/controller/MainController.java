@@ -178,6 +178,7 @@ public class MainController {
         final Map<String, String> traceParams = new HashMap<>();
         final TextMap textMap = new TextMapAdapter(traceParams);
         tracer.inject(span.context(), Format.Builtin.TEXT_MAP, textMap);
+        logger.info("Trace params: {}", traceParams);
         modelMap.addAttribute("traceParams", traceParams);
 
         span.finish();
