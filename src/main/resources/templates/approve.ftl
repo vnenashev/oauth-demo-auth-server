@@ -61,8 +61,8 @@
                   </ul>
               </#if>
 
-              <#list traceParams.entrySet() as entry>
-                  <input type="hidden" name="${entry.key}" value="${entry.value}"/>
+              <#list traceParams as name,value>
+                  <input type="hidden" name="${name}" value="${value}"/>
               </#list>
 
               <input type="submit" class="btn btn-success" name="approve" value="Approve">
