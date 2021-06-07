@@ -30,7 +30,7 @@ spec:
                       - oauth-demo-db
       containers:
         - name: oauth-demo-auth-server
-          image: vnenashev/oauth-demo-auth-server:0.1.7
+          image: vnenashev/oauth-demo-auth-server:0.1.8
           ports:
             - containerPort: 8081
               protocol: TCP

@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -40,7 +41,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import io.jaegertracing.Configuration;
@@ -150,14 +150,14 @@ public class MainController {
 
         final String rScope = params.get("scope");
         final Set<String> reqScope = Stream.of(rScope)
-            .filter(StringUtils::hasText)
-            .flatMap(s -> Arrays.stream(s.split(" ")))
-            .collect(toSet());
+                                           .filter(StringUtils::hasText)
+                                           .flatMap(s -> Arrays.stream(s.split(" ")))
+                                           .collect(toSet());
 
         final Set<String> cScope = Stream.of(client.getScope())
-            .filter(StringUtils::hasText)
-            .flatMap(s -> Arrays.stream(s.split(" ")))
-            .collect(toSet());
+                                         .filter(StringUtils::hasText)
+                                         .flatMap(s -> Arrays.stream(s.split(" ")))
+                                         .collect(toSet());
 
         if (!cScope.containsAll(reqScope)) {
             logger.error("Invalid scope, expected of {}, got {}", cScope, reqScope);
@@ -191,10 +191,25 @@ public class MainController {
                           final ModelMap modelMap
                          ) {
         logger.info("Received POST /approve, parameters: {}", params);
+        final SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(params));
+        Tracer.SpanBuilder spanBuilder;
+        try {
+            if (parentSpan == null) {
+                spanBuilder = tracer.buildSpan("approve");
+            } else {
+                spanBuilder = tracer.buildSpan("approve").asChildOf(parentSpan);
+            }
+        } catch (final IllegalArgumentException e) {
+            spanBuilder = tracer.buildSpan("approve");
+        }
 
         final Map<String, String> query = Optional.ofNullable(params.get("reqid"))
                                                   .map(requestsById::remove)
                                                   .orElse(null);
+        final Span span = spanBuilder.start();
+        span.log("Received POST /approve");
+        span.log(params);
+        span.log(query);
 
         if (query == null) {
             modelMap.addAttribute("error", "No matching authorization request");
@@ -204,25 +219,32 @@ public class MainController {
         logger.info("Authorization request was: {}", query);
 
         if (params.containsKey("approve")) {
-            if (Objects.equals("code", query.get("response_type"))) {
+            span.setTag("user_approve_response", true);
+            final String responseType = query.get("response_type");
+            if (Objects.equals("code", responseType)) {
                 final String code = generateRandomString(8);
                 final Set<String> scope = params.keySet().stream()
-                    .filter(s -> s.startsWith("scope_"))
-                    .map(s -> s.substring("scope_".length()))
-                    .collect(toSet());
+                                                .filter(s -> s.startsWith("scope_"))
+                                                .map(s -> s.substring("scope_".length()))
+                                                .collect(toSet());
+                span.setTag("user_approved_scope", scope.toString());
                 final OauthClient client = clientsById.get(query.get("client_id"));
 
                 final Set<String> cScope = Stream.of(client.getScope())
-                    .filter(StringUtils::hasText)
-                    .flatMap(s -> Arrays.stream(s.split(" ")))
-                    .collect(toSet());
+                                                 .filter(StringUtils::hasText)
+                                                 .flatMap(s -> Arrays.stream(s.split(" ")))
+                                                 .collect(toSet());
 
                 if (!cScope.containsAll(scope)) {
+                    span.setTag("decision", "Denied, invalid scope " + scope);
                     final UriComponentsBuilder redirectBuilder =
                         UriComponentsBuilder.fromUriString(query.get("redirect_uri"));
                     redirectBuilder.queryParam("error", "invalid_scope");
+                    addSpanDataAndInject(parentSpan, redirectBuilder::queryParam);
+                    span.finish();
                     return "redirect:" + redirectBuilder.encode().build().toUriString();
                 }
+                span.setTag("decision", "Approved");
 
                 final Map<String, Object> codeMap = new HashMap<>();
                 codeMap.put("authorizationEndpointRequest", Collections.unmodifiableMap(query));
@@ -234,29 +256,59 @@ public class MainController {
                     UriComponentsBuilder.fromUriString(query.get("redirect_uri"));
                 redirectBuilder.queryParam("code", code);
                 redirectBuilder.queryParam("state", query.get("state"));
+                addSpanDataAndInject(parentSpan, redirectBuilder::queryParam);
+                span.finish();
                 return "redirect:" + redirectBuilder.encode().build().toUriString();
             } else {
+                span.setTag("decision", "Denied, invalid response type " + responseType);
                 // we got a response type we don't understand
                 final UriComponentsBuilder redirectBuilder =
                     UriComponentsBuilder.fromUriString(query.get("redirect_uri"));
                 redirectBuilder.queryParam("error", "unsupported_response_type");
+                addSpanDataAndInject(parentSpan, redirectBuilder::queryParam);
+                span.finish();
                 return "redirect:" + redirectBuilder.encode().build().toUriString();
             }
         } else {
+            span.setTag("user_approve_response", false);
+            span.setTag("decision", "Denied by user");
+
             // user denied access
             final UriComponentsBuilder redirectBuilder =
                 UriComponentsBuilder.fromUriString(query.get("redirect_uri"));
             redirectBuilder.queryParam("error", "access_denied");
+            addSpanDataAndInject(parentSpan, redirectBuilder::queryParam);
+            span.finish();
             return "redirect:" + redirectBuilder.encode().build().toUriString();
         }
     }
 
+    private void addSpanDataAndInject(final SpanContext spanContext, final BiConsumer<? super String, ? super String> consumer) {
+        final Map<String, String> traceParams = new HashMap<>();
+        final TextMap textMap = new TextMapAdapter(traceParams);
+        tracer.inject(spanContext, Format.Builtin.TEXT_MAP, textMap);
+        traceParams.forEach(consumer);
+    }
+
     @PostMapping(path = "/token", produces = MediaType.APPLICATION_JSON_UTF8_VALUE)
-    @ResponseBody
-    public Object token(@RequestHeader("Authorization") final Optional<String> auth,
-                        @RequestParam final Map<String, String> params
-                       ) {
-        logger.info("Received POST /token, authorization: {}, parameters: {}", auth, params);
+    public ResponseEntity<Object> token(@RequestHeader("Authorization") final Optional<String> auth,
+                                        @RequestParam final Map<String, String> params
+                                       ) {
+        logger.info("Received POST /token");
+        final SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(params));
+
+        Tracer.SpanBuilder spanBuilder;
+        try {
+            if (parentSpan == null) {
+                spanBuilder = tracer.buildSpan("token");
+            } else {
+                spanBuilder = tracer.buildSpan("token").asChildOf(parentSpan);
+            }
+        } catch (final IllegalArgumentException e) {
+            spanBuilder = tracer.buildSpan("token");
+        }
+        final Span span = spanBuilder.start();
+        span.log("Received POST /token");
 
         final String clientId;
         final String clientSecret;
@@ -271,39 +323,49 @@ public class MainController {
             clientSecret = params.get("client_secret");
         } else {
             logger.error("No client ID in Authorization header or request parameter");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Collections.singletonMap("error", "invalid_client"));
+            span.log("Unauthorized request");
+            span.finish();
+            final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.UNAUTHORIZED);
+            addSpanDataAndInject(parentSpan, responseBuilder::header);
+            return responseBuilder.body(Collections.singletonMap("error", "invalid_client"));
         }
 
         final OauthClient client = clientsById.get(clientId);
 
         if (client == null) {
-            logger.error("Unknown client {}", clientId);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Collections.singletonMap("error", "invalid_client"));
+            logger.error("Client ID is invalid");
+            span.log("Client is invalid");
+            span.finish();
+            final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.UNAUTHORIZED);
+            addSpanDataAndInject(parentSpan, responseBuilder::header);
+            return responseBuilder.body(Collections.singletonMap("error", "invalid_client"));
         }
 
         if (!Objects.equals(clientSecret, client.getClientSecret())) {
-            logger.error("Mismatched client secret expected {} got {}", client.getClientSecret(), clientSecret);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Collections.singletonMap("error", "invalid_client"));
+            logger.error("Client Secret is invalid");
+            span.log("Client is invalid");
+            span.finish();
+            final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.UNAUTHORIZED);
+            addSpanDataAndInject(parentSpan, responseBuilder::header);
+            return responseBuilder.body(Collections.singletonMap("error", "invalid_client"));
         }
+        span.setTag("grantType", params.getOrDefault("grant_type", "null"));
 
         if (Objects.equals("authorization_code", params.get("grant_type"))) {
             final Map<String, Object> code = Optional.ofNullable(params.get("code"))
-                .map(codes::remove)
-                .orElse(null);
+                                                     .map(codes::remove)
+                                                     .orElse(null);
             if (code != null) {
                 @SuppressWarnings("unchecked")
                 final Map<String, String> authRequest =
                     (Map<String, String>) code.get("authorizationEndpointRequest");
                 final Object expectedClientId = Optional.ofNullable(authRequest)
-                    .map(q -> q.get("client_id"))
-                    .orElse(null);
+                                                        .map(q -> q.get("client_id"))
+                                                        .orElse(null);
                 if (Objects.equals(clientId, expectedClientId)) {
                     final String expectedRedirectUri = Optional.ofNullable(authRequest)
-                        .map(q -> q.get("redirect_uri"))
-                        .orElse(null);
+                                                               .map(q -> q.get("redirect_uri"))
+                                                               .orElse(null);
                     final String actualRedirectUri = params.get("redirect_uri");
                     if (Objects.equals(expectedRedirectUri, actualRedirectUri)) {
                         final String accessToken = generateRandomString(32);
@@ -311,36 +373,55 @@ public class MainController {
 
                         @SuppressWarnings("unchecked")
                         final String cscope = Stream.of(code.get("scope"))
-                            .filter(Objects::nonNull)
-                            .flatMap(s -> ((Set<String>) s).stream())
-                            .collect(Collectors.joining(" "));
+                                                    .filter(Objects::nonNull)
+                                                    .flatMap(s -> ((Set<String>) s).stream())
+                                                    .collect(Collectors.joining(" "));
 
-                        return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope);
+                        return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope, span);
                     } else {
                         logger.error("Redirect URI mismatch, expected {} got {}",
-                            expectedRedirectUri, actualRedirectUri);
-                        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                            .body(Collections.singletonMap("error", "invalid_grant"));
+                                     expectedRedirectUri, actualRedirectUri
+                                    );
+                        span.log("Redirect URI is invalid");
+                        span.finish();
+                        final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.BAD_REQUEST);
+                        addSpanDataAndInject(parentSpan, responseBuilder::header);
+                        return responseBuilder.body(Collections.singletonMap("error", "invalid_grant"));
                     }
                 } else {
                     logger.error("Client mismatch, expected {} got {}", expectedClientId, clientId);
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Collections.singletonMap("error", "invalid_grant"));
+                    span.log("Client ID mismatch");
+                    span.finish();
+                    final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.BAD_REQUEST);
+                    addSpanDataAndInject(parentSpan, responseBuilder::header);
+                    return responseBuilder.body(Collections.singletonMap("error", "invalid_grant"));
                 }
             } else {
                 logger.error("Unknown code {}", params.get("code"));
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Collections.singletonMap("error", "invalid_grant"));
+                span.log("Unknown code");
+                span.finish();
+                final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.BAD_REQUEST);
+                addSpanDataAndInject(parentSpan, responseBuilder::header);
+                return responseBuilder.body(Collections.singletonMap("error", "invalid_grant"));
             }
         } else if (Objects.equals("refresh_token", params.get("grant_type"))) {
+            final Span rfSpan = tracer.buildSpan("find-refresh-token").asChildOf(span).start();
             final RefreshTokenInfo refreshTokenInfo =
                 refreshTokenRepository.findByRefreshToken(params.get("refresh_token"));
+            rfSpan.finish();
             if (refreshTokenInfo != null) {
                 if (!Objects.equals(clientId, refreshTokenInfo.getClientId())) {
+                    span.log("Refresh token compromised, delete");
                     logger.error("Invalid client using a refresh token, expected {} got {}",
-                        clientId, refreshTokenInfo.getClientId());
+                                 clientId, refreshTokenInfo.getClientId()
+                                );
+                    final Span rdSpan = tracer.buildSpan("delete-refresh-token").asChildOf(span).start();
                     refreshTokenRepository.delete(refreshTokenInfo);
-                    return ResponseEntity.badRequest().build();
+                    rdSpan.finish();
+                    span.finish();
+                    final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.BAD_REQUEST);
+                    addSpanDataAndInject(parentSpan, responseBuilder::header);
+                    return responseBuilder.build();
                 }
                 logger.info("Found matching refresh token: {}", refreshTokenInfo.getRefreshToken());
 
@@ -348,34 +429,53 @@ public class MainController {
                 final String refreshToken = generateRandomString(64);
 
                 final String cscope = refreshTokenInfo.getScope();
+                final Span rdSpan = tracer.buildSpan("find-refresh-token").asChildOf(span).start();
                 refreshTokenRepository.delete(refreshTokenInfo);
-
-                return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope);
+                rdSpan.finish();
+                return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope, span);
             } else {
                 logger.error("No matching token was found");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                span.log("Invalid token");
+                span.finish();
+                final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.UNAUTHORIZED);
+                addSpanDataAndInject(parentSpan, responseBuilder::header);
+                return responseBuilder.build();
             }
         } else {
             logger.error("Unknown grant type {}", params.get("grant_type"));
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Collections.singletonMap("error", "invalid_grant_type"));
+            span.log("Invalid grant type");
+            span.finish();
+            final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(HttpStatus.BAD_REQUEST);
+            addSpanDataAndInject(parentSpan, responseBuilder::header);
+            return responseBuilder.body(Collections.singletonMap("error", "invalid_grant_type"));
         }
     }
 
-    private Object generateTokensAndResponse(final String clientId,
-                                             final String accessToken,
-                                             final String refreshToken,
-                                             final String cscope) {
+    private ResponseEntity<Object> generateTokensAndResponse(final String clientId,
+                                                             final String accessToken,
+                                                             final String refreshToken,
+                                                             final String cscope,
+                                                             final Span span
+                                                            ) {
         final Instant now = Instant.now();
+        final Tracer.SpanBuilder aSpanBuilder = tracer.buildSpan("save-access-token").asChildOf(span);
+        aSpanBuilder.withTag("clientId", clientId);
+        aSpanBuilder.withTag("scope", cscope);
+        final Span aSpan = aSpanBuilder.start();
         accessTokenRepository.save(
             new AccessTokenInfo(
                 accessToken,
                 clientId,
                 StringUtils.hasText(cscope) ? cscope : null,
                 now,
-                now.plus(tokenMaxAge))
-        );
-
+                now.plus(tokenMaxAge)
+            )
+                                  );
+        aSpan.finish();
+        final Tracer.SpanBuilder rSpanBuilder = tracer.buildSpan("save-refresh-token").asChildOf(span);
+        rSpanBuilder.withTag("clientId", clientId);
+        rSpanBuilder.withTag("scope", cscope);
+        final Span rSpan = rSpanBuilder.start();
         refreshTokenRepository.save(
             new RefreshTokenInfo(
                 refreshToken,
@@ -383,9 +483,9 @@ public class MainController {
                 StringUtils.hasText(cscope) ? cscope : null,
                 Instant.now()
             )
-        );
-
-        logger.info("Issuing access token {} with scope {}", accessToken, cscope);
+                                   );
+        rSpan.finish();
+        logger.info("Issued access token {} with scope {}", accessToken, cscope);
 
         final Map<String, Object> tokenResponse = new HashMap<>();
         tokenResponse.put("scope", StringUtils.hasText(cscope) ? cscope : null);
@@ -393,6 +493,8 @@ public class MainController {
         tokenResponse.put("expires_in", tokenMaxAge.getSeconds());
         tokenResponse.put("token_type", "Bearer");
         tokenResponse.put("refresh_token", refreshToken);
+
+        span.finish();
 
         return ResponseEntity.ok(tokenResponse);
     }
