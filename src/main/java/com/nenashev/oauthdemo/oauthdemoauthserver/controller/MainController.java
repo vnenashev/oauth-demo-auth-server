@@ -377,7 +377,7 @@ public class MainController {
                                                     .flatMap(s -> ((Set<String>) s).stream())
                                                     .collect(Collectors.joining(" "));
 
-                        return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope, span);
+                        return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope, span, parentSpan);
                     } else {
                         logger.error("Redirect URI mismatch, expected {} got {}",
                                      expectedRedirectUri, actualRedirectUri
@@ -432,7 +432,7 @@ public class MainController {
                 final Span rdSpan = tracer.buildSpan("find-refresh-token").asChildOf(span).start();
                 refreshTokenRepository.delete(refreshTokenInfo);
                 rdSpan.finish();
-                return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope, span);
+                return generateTokensAndResponse(clientId, accessToken, refreshToken, cscope, span, parentSpan);
             } else {
                 logger.error("No matching token was found");
                 span.log("Invalid token");
@@ -455,7 +455,8 @@ public class MainController {
                                                              final String accessToken,
                                                              final String refreshToken,
                                                              final String cscope,
-                                                             final Span span
+                                                             final Span span,
+                                                             final SpanContext parentContext
                                                             ) {
         final Instant now = Instant.now();
         final Tracer.SpanBuilder aSpanBuilder = tracer.buildSpan("save-access-token").asChildOf(span);
@@ -495,8 +496,10 @@ public class MainController {
         tokenResponse.put("refresh_token", refreshToken);
 
         span.finish();
+        final ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
+        addSpanDataAndInject(parentContext, responseBuilder::header);
 
-        return ResponseEntity.ok(tokenResponse);
+        return responseBuilder.body(tokenResponse);
     }
 
     private String generateRandomString(final int bytesLength) {
