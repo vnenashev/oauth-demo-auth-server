@@ -292,10 +292,11 @@ public class MainController {
 
     @PostMapping(path = "/token", produces = MediaType.APPLICATION_JSON_UTF8_VALUE)
     public ResponseEntity<Object> token(@RequestHeader("Authorization") final Optional<String> auth,
-                                        @RequestParam final Map<String, String> params
+                                        @RequestParam final Map<String, String> params,
+                                        @RequestHeader final Map<String, String> headers
                                        ) {
         logger.info("Received POST /token");
-        final SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(params));
+        final SpanContext parentSpan = tracer.extract(Format.Builtin.TEXT_MAP, new TextMapAdapter(headers));
 
         Tracer.SpanBuilder spanBuilder;
         try {
