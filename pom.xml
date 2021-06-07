@@ -11,13 +11,13 @@
 
   <groupId>com.nenashev.oauth-demo</groupId>
   <artifactId>oauth-demo-auth-server</artifactId>
-  <version>0.1.10-SNAPSHOT</version>
+  <version>0.1.10</version>
   <name>oauth-demo-auth-server</name>
   <description>Demo project for Oauth Authentication Server</description>
 
   <scm>
     <developerConnection>scm:git:git@github.com:vnenashev/oauth-demo-auth-server.git</developerConnection>
-    <tag>HEAD</tag>
+    <tag>0.1.10</tag>
   </scm>
 
   <properties>
